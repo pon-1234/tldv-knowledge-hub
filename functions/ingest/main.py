@@ -30,12 +30,13 @@ def main(request: Request) -> Response:
     ).hexdigest()
 
     if not hmac.compare_digest(expected_signature, signature):
+        print(f"Invalid signature. Expected: {expected_signature}, Got: {signature}")
         return Response("Invalid signature", status=401)
 
     # 2. イベントをPub/Subに発行
     try:
         event_data = request.get_json()
-        meeting_id = event_data.get("meeting", {}).get("id")
+        meeting_id = event_data.get("data", {}).get("id")
         event_type = event_data.get("event")
 
         if not meeting_id or not event_type:

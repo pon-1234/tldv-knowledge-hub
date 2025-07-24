@@ -16,7 +16,7 @@ def main(cloudevent):
     """
     try:
         data = json.loads(cloudevent.data.decode("utf-8"))
-        meeting_id = data.get("meeting", {}).get("id")
+        meeting_id = data.get("data", {}).get("id")
         event_type = data.get("event")
 
         print(f"Processing event {event_type} for meeting {meeting_id}...")
