@@ -85,7 +85,7 @@ root/
 | Secret Manager | `tldv-api-key`, etc. | APIキーやTokenを管理。最新版をCloud Functions/Runにマウント。 |
 | Pub/Sub | `tldv-meeting-events` | メッセージ保持期間7日。デッドレターキュー(DLQ)を設定し、処理失敗時は14日間保持。 |
 | BigQuery | `knowledge_ds` | `meetings`, `transcripts`, `highlights`テーブル。`event_time`で時間分割パーティションを設定。`project_id`でクラスタリング。 |
-| Cloud Functions | `ingest`, `fetcher`, `summarizer` | Gen2, Python 3.12, メモリ512MB。冪等性を担保し、重複処理を防止。 |
+| Cloud Functions | `ingest`, `fetcher`, `summarizer` | Gen2, Python 3.12, メモリ512MB。冪等性を担保し、重複処理を防止。**Pub/Subトリガーの場合、適切なIAM権限（`run.invoker`, `iam.serviceAccountTokenCreator`）の設定が必須。** |
 | Cloud Run | `search-api` | `min-instances=0`でコスト最適化。VPCコネクタ経由で内部リソースにアクセス。 |
 | Vertex AI | `Embedding API` | テキストからベクトルデータを生成。GCP内で完結しセキュア。 |
 
@@ -93,6 +93,7 @@ root/
 | サービス | 用途 | Secret名 |
 | :--- | :--- | :--- |
 | tl;dv API | 文字起こし・メタデータ取得 | `TLDV_API_KEY` |
+| tl;dv Webhook | イベント受信 | `TLDV_SIGNING_SECRET` |
 | OpenAI API | GPT-4oによるサマリ生成 | `OPENAI_API_KEY` |
 | Notion API | 議事録ページ作成 | `NOTION_API_TOKEN` |
 | Asana API | TODOタスク作成 | `ASANA_PAT` |
@@ -116,7 +117,7 @@ root/
 | ID | Task | DoD |
 | :--- | :--- | :--- |
 | 1-1 | `ingest` Function開発 | HMAC署名を検証し、不正なリクエストを弾ける。正常なイベントをPub/SubにPublishできる。 |
-| 1-2 | `fetcher` Function開発 | Pub/Subトリガーで起動。tl;dv APIから3種のリソースを取得し、BigQueryにUpsertできる。冪等性が担保されている。 |
+| 1-2 | `fetcher` Function開発 | Pub/Subトリガーで起動。tl;dv APIから3種のリソースを取得し、BigQueryにUpsertできる。**Webhookペイロードの`data.meetingId`を正しく使用すること。** 冪等性が担保されている。 |
 | 1-3 | DLQ & アラート設定 | `fetcher`での処理失敗時にイベントがDLQに送られ、Slackにアラートが通知される。 |
 
 #### **2️⃣ LLM連携 & ナレッジ自動生成（Week 2）**
@@ -183,8 +184,9 @@ jobs:
 ### **9. リスクと対策**
 | リスク分類 | 具体的なリスク内容 | 対策 |
 | :--- | :--- | :--- |
-| **外部API** | ・API仕様変更による機能停止<br>・レートリミット超過<br>・一時的な障害 | ・各APIクライアントを疎結合に実装し、変更時の影響範囲を限定。<br>・指数バックオフ付きのリトライ処理を実装。<br>・サーキットブレーカーパターンの導入を検討。 |
+| **外部API** | ・API仕様変更による機能停止<br>（例: Webhookペイロードの構造変更 `id` vs `meetingId`）<br>・レートリミット超過<br>・一時的な障害（404エラーなど） | ・各APIクライアントを疎結合に実装し、変更時の影響範囲を限定。<br>・指数バックオフ付きのリトライ処理を実装。<br>・サーキットブレーカーパターンの導入を検討。 |
 | **LLM** | ・出力品質のばらつき、幻覚<br>・意図しない高コスト化 | ・プロンプトをバージョン管理し、改善プロセスを確立。<br>・出力形式をJSON Schemaでバリデーション。<br>・API usageを詳細にモニタリングし、トークン数に上限を設定。 |
+| **GCP/インフラ** | ・IAM権限設定の不足によるサービス間連携の失敗 | ・TerraformでIAMポリシーをコード管理する。<br>・Pub/Subトリガーの場合、対象Functionのサービスアカウントに`run.invoker`ロール、Pub/Subのサービスアカウントに`iam.serviceAccountTokenCreator`ロールが必要。 |
 | **セキュリティ** | ・会議内容に機微情報が含まれる | ・アクセス制御を厳格化（IAM, VPC-SC）。<br>・PII（個人を特定できる情報）を検出・マスキングする処理の導入を検討。 |
 
 ---
