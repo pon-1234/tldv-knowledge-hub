@@ -117,6 +117,13 @@ resource "google_project_iam_member" "pubsub_token_creator" {
   member  = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
 }
 
+# EventarcからFunctionを起動するためのIAM設定
+resource "google_project_iam_member" "eventarc_event_receiver" {
+  project = data.google_project.project.project_id
+  role    = "roles/eventarc.eventReceiver"
+  member  = "serviceAccount:${google_service_account.functions_sa.email}"
+}
+
 resource "google_cloud_run_service_iam_member" "fetcher_invoker" {
   location = google_cloudfunctions2_function.fetcher.location
   project  = google_cloudfunctions2_function.fetcher.project
@@ -124,3 +131,70 @@ resource "google_cloud_run_service_iam_member" "fetcher_invoker" {
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.functions_sa.email}"
 } 
+
+# summarizer Function
+resource "google_cloudfunctions2_function" "summarizer" {
+  name     = "summarizer"
+  location = "asia-northeast1"
+
+  build_config {
+    runtime     = "python312"
+    entry_point = "main"
+    source {
+      storage_source {
+        bucket = google_storage_bucket.source_bucket.name
+        object = google_storage_bucket_object.summarizer_source_archive.name
+      }
+    }
+  }
+
+  service_config {
+    max_instance_count = 1
+    available_memory   = "512Mi" # LLMライブラリはメモリを多く消費する可能性がある
+    timeout_seconds    = 540
+    service_account_email = google_service_account.functions_sa.email
+    secret_environment_variables {
+      key       = "OPENAI_API_KEY"
+      project_id = data.google_project.project.project_id
+      secret    = google_secret_manager_secret.openai_api_key.secret_id
+      version   = "latest"
+    }
+    # NOTION_API_TOKEN, ASANA_PAT, SLACK_BOT_TOKEN も同様に設定
+  }
+
+  event_trigger {
+    trigger_region = "asia-northeast1"
+    event_type     = "google.cloud.audit.log.v1.written"
+    event_filters {
+      attribute = "serviceName"
+      value     = "bigquery.googleapis.com"
+    }
+    event_filters {
+      attribute = "methodName"
+      value     = "google.cloud.bigquery.v2.TableDataService.InsertAll"
+    }
+    service_account_email = google_service_account.functions_sa.email
+  }
+}
+
+# summarizerのソースコード
+data "archive_file" "summarizer_source_archive" {
+  type        = "zip"
+  source_dir  = "../../../functions/summarizer"
+  output_path = "/tmp/summarizer.zip"
+}
+
+resource "google_storage_bucket_object" "summarizer_source_archive" {
+  name   = "summarizer.zip"
+  bucket = google_storage_bucket.source_bucket.name
+  source = data.archive_file.summarizer_source_archive.output_path
+}
+
+# OpenAI APIキー用のSecret
+resource "google_secret_manager_secret" "openai_api_key" {
+  secret_id = "openai_api_key"
+  replication {
+    auto {}
+  }
+}
+# 他のSecret (Notion, Asana, Slack) も同様に定義 
