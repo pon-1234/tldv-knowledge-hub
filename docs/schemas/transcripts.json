@@ -1,0 +1,38 @@
+[
+  {
+    "name": "meeting_id",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "text",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "start_time",
+    "type": "FLOAT64",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "end_time",
+    "type": "FLOAT64",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "speaker_name",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "turn_index",
+    "type": "INT64",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "inserted_at",
+    "type": "TIMESTAMP",
+    "mode": "NULLABLE",
+    "defaultValueExpression": "CURRENT_TIMESTAMP()"
+  }
+] 

@@ -1,6 +1,9 @@
 import os
 import json
+import base64
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from google.cloud import bigquery
 from cloudevents.http import from_http
 
@@ -10,26 +13,52 @@ BASE_URL = "https://pasta.tldv.io/v1alpha1"
 bq_client = bigquery.Client()
 DATASET_ID = "knowledge_ds"
 
-def main(cloudevent):
+# リトライ戦略を設定したセッションを作成
+def create_retry_session():
+    session = requests.Session()
+    retry = Retry(
+        total=3,                # 合計3回リトライ
+        read=3,
+        connect=3,
+        backoff_factor=0.3,     # 指数バックオフ
+        status_forcelist=(500, 502, 503, 504), # サーバーエラー時にリトライ
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
+
+def main(event, context):
     """
     Pub/Subトリガーで起動し、tl;dvからデータを取得してBigQueryに格納する。
     """
     try:
-        data = json.loads(cloudevent.data.decode("utf-8"))
-        meeting_id = data.get("data", {}).get("id")
+        pubsub_message = base64.b64decode(event['data']).decode('utf-8')
+        data = json.loads(pubsub_message)
+        
+        event_payload = data.get("data", {})
         event_type = data.get("event")
+
+        # ★★★ 最終修正 ★★★
+        # 正しい階層から "meetingId" を取得する
+        meeting_id = event_payload.get("meetingId")
+        
+        # meetingId がない場合のフォールバック
+        if not meeting_id:
+            meeting_id = event_payload.get("id")
 
         print(f"Processing event {event_type} for meeting {meeting_id}...")
 
-        # TranscriptReadyイベントの時のみ処理
         if event_type != "TranscriptReady":
             print(f"Skipping event type: {event_type}")
             return "OK", 200
 
         headers = {"x-api-key": TLDV_API_KEY}
+        url = f"{BASE_URL}/meetings/{meeting_id}/transcript"
         
-        # 1. Transcript取得
-        transcript_res = requests.get(f"{BASE_URL}/meetings/{meeting_id}/transcript", headers=headers)
+        session = create_retry_session()
+        transcript_res = session.get(url, headers=headers)
+        
         transcript_res.raise_for_status()
         transcripts = transcript_res.json().get("data", [])
         
