@@ -132,69 +132,114 @@ resource "google_cloud_run_service_iam_member" "fetcher_invoker" {
   member   = "serviceAccount:${google_service_account.functions_sa.email}"
 } 
 
-# summarizer Function
-resource "google_cloudfunctions2_function" "summarizer" {
-  name     = "summarizer"
-  location = "asia-northeast1"
+# # summarizer Function - 将来的に有効化
+# resource "google_cloudfunctions2_function" "summarizer" {
+#   name     = "summarizer"
+#   location = "asia-northeast1"
+#
+#   build_config {
+#     runtime     = "python312"
+#     entry_point = "main"
+#     source {
+#       storage_source {
+#         bucket = google_storage_bucket.source_bucket.name
+#         object = google_storage_bucket_object.summarizer_source_archive.name
+#       }
+#     }
+#   }
+#
+#   service_config {
+#     max_instance_count = 1
+#     available_memory   = "512Mi" # LLMライブラリはメモリを多く消費する可能性がある
+#     timeout_seconds    = 540
+#     service_account_email = google_service_account.functions_sa.email
+#     secret_environment_variables {
+#       key       = "OPENAI_API_KEY"
+#       project_id = data.google_project.project.project_id
+#       secret    = google_secret_manager_secret.openai_api_key.secret_id
+#       version   = "latest"
+#     }
+#     # NOTION_API_TOKEN, ASANA_PAT, SLACK_BOT_TOKEN も同様に設定
+#   }
+#
+#   event_trigger {
+#     trigger_region = "asia-northeast1"
+#     event_type     = "google.cloud.audit.log.v1.written"
+#     event_filters {
+#       attribute = "serviceName"
+#       value     = "bigquery.googleapis.com"
+#     }
+#     event_filters {
+#       attribute = "methodName"
+#       value     = "google.cloud.bigquery.v2.TableDataService.InsertAll"
+#     }
+#     service_account_email = google_service_account.functions_sa.email
+#   }
+# }
 
-  build_config {
-    runtime     = "python312"
-    entry_point = "main"
-    source {
-      storage_source {
-        bucket = google_storage_bucket.source_bucket.name
-        object = google_storage_bucket_object.summarizer_source_archive.name
+# # summarizerのソースコード
+# data "archive_file" "summarizer_source_archive" {
+#   type        = "zip"
+#   source_dir  = "../../../functions/summarizer"
+#   output_path = "/tmp/summarizer.zip"
+# }
+#
+# resource "google_storage_bucket_object" "summarizer_source_archive" {
+#   name   = "summarizer.zip"
+#   bucket = google_storage_bucket.source_bucket.name
+#   source = data.archive_file.summarizer_source_archive.output_path
+# }
+
+# # OpenAI APIキー用のSecret - 将来的に有効化
+# resource "google_secret_manager_secret" "openai_api_key" {
+#   secret_id = "openai_api_key"
+#   replication {
+#     auto {}
+#   }
+# }
+# # 他のSecret (Notion, Asana, Slack) も同様に定義 
+
+# MCP Server (Cloud Run) - 将来的に有効化
+resource "google_cloud_run_v2_service" "mcp_server" {
+  name     = "mcp-server"
+  location = "asia-northeast1"
+  deletion_protection = false # ★ 一時的に追加
+
+  template {
+    containers {
+      image = "gcr.io/${data.google_project.project.project_id}/mcp-server:latest"
+      env {
+        name  = "TLDV_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.tldv_api_key.secret_id
+            version = "latest"
+          }
+        }
       }
     }
-  }
-
-  service_config {
-    max_instance_count = 1
-    available_memory   = "512Mi" # LLMライブラリはメモリを多く消費する可能性がある
-    timeout_seconds    = 540
-    service_account_email = google_service_account.functions_sa.email
-    secret_environment_variables {
-      key       = "OPENAI_API_KEY"
-      project_id = data.google_project.project.project_id
-      secret    = google_secret_manager_secret.openai_api_key.secret_id
-      version   = "latest"
-    }
-    # NOTION_API_TOKEN, ASANA_PAT, SLACK_BOT_TOKEN も同様に設定
-  }
-
-  event_trigger {
-    trigger_region = "asia-northeast1"
-    event_type     = "google.cloud.audit.log.v1.written"
-    event_filters {
-      attribute = "serviceName"
-      value     = "bigquery.googleapis.com"
-    }
-    event_filters {
-      attribute = "methodName"
-      value     = "google.cloud.bigquery.v2.TableDataService.InsertAll"
-    }
-    service_account_email = google_service_account.functions_sa.email
+    service_account = google_service_account.functions_sa.email
   }
 }
 
-# summarizerのソースコード
-data "archive_file" "summarizer_source_archive" {
-  type        = "zip"
-  source_dir  = "../../../functions/summarizer"
-  output_path = "/tmp/summarizer.zip"
+# MCP Serverを認証済みユーザーのみが呼び出せるようにするIAM設定
+resource "google_cloud_run_service_iam_member" "mcp_server_invoker" {
+  location = google_cloud_run_v2_service.mcp_server.location
+  project  = google_cloud_run_v2_service.mcp_server.project
+  service  = google_cloud_run_v2_service.mcp_server.name # ★ nameからserviceに修正
+  role     = "roles/run.invoker"
+  member   = "user:t.hayashi@rasa-jp.co.jp"
 }
 
-resource "google_storage_bucket_object" "summarizer_source_archive" {
-  name   = "summarizer.zip"
-  bucket = google_storage_bucket.source_bucket.name
-  source = data.archive_file.summarizer_source_archive.output_path
-}
+# (参考) Cloud Buildでコンテナをビルド・プッシュするための設定
+# resource "google_cloudbuild_trigger" "mcp_server_build" {
+#   ...
+# } 
 
-# OpenAI APIキー用のSecret
-resource "google_secret_manager_secret" "openai_api_key" {
-  secret_id = "openai_api_key"
-  replication {
-    auto {}
-  }
-}
-# 他のSecret (Notion, Asana, Slack) も同様に定義 
+# # summarizerがSecretにアクセスするためのIAM設定 - 将来的に有効化
+# resource "google_secret_manager_secret_iam_member" "openai_api_key_accessor" {
+#   project   = google_secret_manager_secret.openai_api_key.project
+#   secret_id = google_secret_manager_secret.openai_api_key.secret_id
+#   role      = "roles/secretmanager.secretAccessor"
+#   member    = "serviceAccount:${google_service_account.functions_sa.email}"
+# } 
