@@ -1,0 +1,7 @@
+[
+  { "name": "meeting_id", "type": "STRING", "mode": "REQUIRED" },
+  { "name": "timestamp", "type": "TIMESTAMP" },
+  { "name": "link", "type": "STRING" },
+  { "name": "note", "type": "STRING" },
+  { "name": "inserted_at", "type": "TIMESTAMP", "defaultValueExpression": "CURRENT_TIMESTAMP()" }
+]

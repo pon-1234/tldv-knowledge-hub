@@ -1,0 +1,13 @@
+[
+  { "name": "meeting_id", "type": "STRING", "mode": "REQUIRED" },
+  { "name": "title", "type": "STRING" },
+  { "name": "conference_id", "type": "STRING" },
+  { "name": "thumbnail_link", "type": "STRING" },
+  { "name": "recorded_at", "type": "TIMESTAMP" },
+  { "name": "recording_link", "type": "STRING" },
+  { "name": "meeting_type", "type": "STRING" },
+  { "name": "notes_without_timestamps", "type": "STRING" },
+  { "name": "owner", "type": "STRING" },
+  { "name": "participants", "type": "STRING" },
+  { "name": "inserted_at", "type": "TIMESTAMP", "defaultValueExpression": "CURRENT_TIMESTAMP()" }
+]

@@ -37,7 +37,11 @@ resource "google_bigquery_dataset" "knowledge_ds" {
 resource "google_bigquery_table" "meetings" {
   dataset_id = google_bigquery_dataset.knowledge_ds.dataset_id
   table_id   = "meetings"
-  # ... schema定義 ...
+  time_partitioning {
+    type  = "DAY"
+    field = "inserted_at"
+  }
+  schema = file("../../../docs/schemas/meetings.json")
 }
 
 resource "google_bigquery_table" "transcripts" {
@@ -53,6 +57,21 @@ resource "google_bigquery_table" "transcripts" {
 resource "google_bigquery_table" "highlights" {
   dataset_id = google_bigquery_dataset.knowledge_ds.dataset_id
   table_id   = "highlights"
+  time_partitioning {
+    type  = "DAY"
+    field = "inserted_at"
+  }
+  schema = file("../../../docs/schemas/highlights.json")
+}
+
+resource "google_bigquery_table" "zapier_transcripts" {
+  dataset_id = google_bigquery_dataset.knowledge_ds.dataset_id
+  table_id   = "zapier_transcripts"
+  time_partitioning {
+    type  = "DAY"
+    field = "inserted_at"
+  }
+  schema = file("../../../docs/schemas/zapier_transcripts.json")
 }
 
 # fetcher Function (Terraform管理)
